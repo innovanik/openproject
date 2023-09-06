@@ -71,8 +71,18 @@ module API::V3::Storages
     extend ClassMethods
 
     def initialize(model, current_user:, embed_links: nil)
-      @connection_manager =
-        ::OAuthClients::ConnectionManager.new(user: current_user, oauth_client: model.oauth_client)
+      @connection_manager = case model.provider_type
+                            when ::Storages::Storage::PROVIDER_TYPE_NEXTCLOUD
+                              ::OAuthClients::ConnectionManager.new(user: current_user, oauth_client: model.oauth_client)
+                            when ::Storages::Storage::PROVIDER_TYPE_ONE_DRIVE
+                              ::OAuthClients::OneDriveConnectionManager.new(
+                                user: current_user,
+                                oauth_client: model.oauth_client,
+                                tenant_id: model.tenant_id
+                              )
+                            else
+                              raise ArgumentError, "Provider type not valid!"
+                            end
 
       super
     end
@@ -176,12 +186,14 @@ module API::V3::Storages
     end
 
     associated_resource :oauth_application,
-                        skip_render: ->(*) { !current_user.admin? },
+                        skip_render: ->(*) { !current_user.admin? || !represented.provider_type_nextcloud? },
                         getter: ->(*) {
+                          next unless current_user.admin? && represented.provider_type_nextcloud?
+
                           ::API::V3::OAuth::OAuthApplicationsRepresenter.create(represented.oauth_application, current_user:)
                         },
                         link: ->(*) {
-                          next unless current_user.admin?
+                          next unless current_user.admin? && represented.provider_type_nextcloud?
 
                           {
                             href: api_v3_paths.oauth_application(represented.oauth_application.id),
