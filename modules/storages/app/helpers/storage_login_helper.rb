@@ -30,7 +30,21 @@ module StorageLoginHelper
   def storage_login_input(storage)
     return {} if storage&.oauth_client.blank?
 
-    connection_manager = ::OAuthClients::ConnectionManager.new(user: current_user, oauth_client: storage.oauth_client)
+    connection_manager = case storage.provider_type
+                         when ::Storages::Storage::PROVIDER_TYPE_NEXTCLOUD
+                           ::OAuthClients::ConnectionManager.new(
+                             user: current_user,
+                             oauth_client: storage.oauth_client
+                           )
+                         when ::Storages::Storage::PROVIDER_TYPE_ONE_DRIVE
+                           ::OAuthClients::OneDriveConnectionManager.new(
+                             user: current_user,
+                             oauth_client: storage.oauth_client,
+                             tenant_id: storage.tenant_id
+                           )
+                         else
+                           raise ArgumentError, "Provider type not valid!"
+                         end
 
     {
       storageType: API::V3::Storages::STORAGE_TYPE_URN_MAP[storage.provider_type],
